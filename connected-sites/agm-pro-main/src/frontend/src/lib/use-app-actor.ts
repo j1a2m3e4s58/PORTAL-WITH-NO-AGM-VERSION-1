@@ -50,6 +50,10 @@ export function useAppActor<TActor>(
   const actorQuery = useQuery({
     queryKey: [ACTOR_QUERY_KEY, identity?.getPrincipal().toString()],
     queryFn: async () => {
+      if (window.location.pathname.startsWith("/connected-sites/agm-pro")) {
+        return mockBackend as unknown as TActor;
+      }
+
       if (isLocalHost()) {
         if (import.meta.env.VITE_USE_LOCAL_RUNTIME === "true") {
           return createRuntimeBackend() as unknown as TActor;
