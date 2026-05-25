@@ -46,7 +46,6 @@ const TRAINING_VIDEOS_STORE_KEY = "bcb_training_videos_cache";
 const TRAINING_DOCUMENTS_STORE_KEY = "bcb_training_documents_cache";
 const NOTIFICATIONS_STORE_KEY = "bcb_notifications_cache";
 const AUDIT_LOGS_STORE_KEY = "bcb_audit_logs_cache";
-const STAFF_STATS_STORE_KEY = "bcb_staff_stats_cache";
 const USERS_UPDATED_EVENT = "bcb:users-updated";
 export const ANNOUNCEMENTS_UPDATED_EVENT = "bcb:announcements-updated";
 export const FORMS_UPDATED_EVENT = "bcb:forms-updated";
@@ -55,12 +54,10 @@ const SESSION_EXPIRED_EVENT = "bcb:session-expired";
 const ENABLE_SEEDED_FALLBACK =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_SEEDED_FALLBACK === "true";
 const RECENT_USER_OVERRIDE_MS = 30 * 1000;
-export const REQUEST_ACTIVITY_EVENT = "bcb:request-activity";
+const REQUEST_ACTIVITY_EVENT = "bcb:request-activity";
 const ACTIVITY_LOG_UPDATED_EVENT = "bcb:activity-log-updated";
 const ACTIVITY_LOG_KEY = "bcb_activity_log";
 const ACTIVITY_LOG_LIMIT = 40;
-let _liveAuthUser: User | null = null;
-let _liveSessionToken: string | null = null;
 
 export interface ActivityLogEntry {
   id: string;
@@ -145,102 +142,10 @@ function persistActivityLog(entries: ActivityLogEntry[]) {
   }
 }
 
-function loadStaffStatsCache(): StaffStats | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STAFF_STATS_STORE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StaffStats>;
-    return {
-      total: Number(parsed.total ?? 0),
-      active: Number(parsed.active ?? 0),
-      archived: Number(parsed.archived ?? 0),
-      byDepartment: (parsed.byDepartment as Record<string, number>) ?? {},
-      byBranch: (parsed.byBranch as Record<string, number>) ?? {},
-      byRole: (parsed.byRole as Record<string, number>) ?? {},
-    };
-  } catch {
-    return null;
-  }
-}
-
-function persistStaffStatsCache(stats: StaffStats) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STAFF_STATS_STORE_KEY, JSON.stringify(stats));
-  } catch {
-    // Ignore storage failures.
-  }
-}
-
-function getEffectiveActiveStaffSync(): User[] {
-  return _mockUsers.filter(
-    (user) => isPortalStaff(user) && user.isActive && !user.isArchived,
-  );
-}
-
-function deriveLocalStaffStats(): StaffStats {
-  const portalUsers = _mockUsers.filter((user) => isPortalStaff(user));
-  const active = getEffectiveActiveStaffSync();
-  const byDept: Record<string, number> = {};
-  const byBranch: Record<string, number> = {};
-  const byRole: Record<string, number> = {};
-  for (const u of active) {
-    byDept[u.department] = (byDept[u.department] ?? 0) + 1;
-    byBranch[u.branch] = (byBranch[u.branch] ?? 0) + 1;
-    byRole[u.role] = (byRole[u.role] ?? 0) + 1;
-  }
-  return {
-    total: portalUsers.length,
-    active: active.length,
-    archived: portalUsers.filter((user) => user.isArchived).length,
-    byDepartment: byDept,
-    byBranch: byBranch,
-    byRole: byRole,
-  };
-}
-
-function getEffectiveStaffStatsSync(): StaffStats {
-  return loadStaffStatsCache() ?? deriveLocalStaffStats();
-}
-
-function buildBranchDistribution(
-  stats: StaffStats,
-): Array<{ name: string; value: number }> {
-  const branchOrder = [
-    "HEAD OFFICE",
-    "BAWJIASE",
-    "ADEISO",
-    "OFAAKOR",
-    "KASOA NEW MARKET",
-    "KASOA MAIN",
-  ];
-
-  return branchOrder.map((name) => ({
-    name,
-    value: Number(stats.byBranch?.[name] ?? 0),
-  }));
-}
-
-function buildDepartmentDistribution(
-  stats: StaffStats,
-): Array<{ name: string; value: number }> {
-  return Object.entries(stats.byDepartment ?? {})
-    .map(([name, value]) => ({
-      name,
-      value: Number(value ?? 0),
-    }))
-    .sort((a, b) => b.value - a.value);
-}
-
 function serializeContentCache<T>(items: T[]): string {
   return JSON.stringify(items, (_key, value) =>
     typeof value === "bigint" ? value.toString() : value,
   );
-}
-
-function seededFallback<T>(items: T[]): T[] {
-  return ENABLE_SEEDED_FALLBACK ? items : [];
 }
 
 function loadContentCache<T>(
@@ -289,7 +194,6 @@ export function apiClearActivityLog() {
 }
 
 function getStoredSessionToken(): string | null {
-  if (_liveSessionToken) return _liveSessionToken;
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
@@ -303,27 +207,15 @@ function getStoredSessionToken(): string | null {
   }
 }
 
-function resolveAuthToken(sessionTokenOverride?: string | null): string | null {
-  return sessionTokenOverride ?? getStoredSessionToken();
+export function apiSetCurrentAuthUser(_user: User | null) {
+  // Compatibility hook for the auth store; the working client reads auth from localStorage.
 }
 
-function withSessionToken(url: string, sessionTokenOverride?: string | null): string {
-  const token = resolveAuthToken(sessionTokenOverride);
+function withSessionToken(url: string): string {
+  const token = getStoredSessionToken();
   if (!token) return url;
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}sessionToken=${encodeURIComponent(token)}`;
-}
-
-function getAuthHeaders(
-  sessionTokenOverride?: string | null,
-): Record<string, string> | undefined {
-  const token = resolveAuthToken(sessionTokenOverride);
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
-}
-
-export function apiSetCurrentAuthUser(user: User | null) {
-  _liveAuthUser = user;
-  _liveSessionToken = user?.sessionToken ?? null;
 }
 
 function withCacheBuster(url: string): string {
@@ -331,30 +223,24 @@ function withCacheBuster(url: string): string {
   return `${url}${separator}_ts=${Date.now()}`;
 }
 
-function handleSessionExpired(sessionToken?: string | null) {
-  const activeToken = getStoredSessionToken();
-  if (activeToken && !sessionToken) {
-    return;
-  }
-  if (sessionToken && activeToken && sessionToken !== activeToken) {
-    return;
-  }
+function handleSessionExpired() {
   if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // ignore storage failures
+  }
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
 }
 
-async function postMailApi(
-  path: string,
-  payload: Record<string, unknown>,
-  sessionTokenOverride?: string | null,
-) {
-  const sessionToken = resolveAuthToken(sessionTokenOverride);
+async function postMailApi(path: string, payload: Record<string, unknown>) {
   const response = await withRequestActivity(path, async () => {
-    return fetch(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken), {
+    const token = getStoredSessionToken();
+    return fetch(withSessionToken(`${MAIL_API_URL}${path}`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
     });
@@ -364,7 +250,7 @@ async function postMailApi(
   };
   if (!response.ok) {
     if (response.status === 401) {
-      handleSessionExpired(sessionToken);
+      handleSessionExpired();
       throw new Error("Session expired. Please log in again.");
     }
     throw new Error(data.error || "Email could not be sent");
@@ -374,15 +260,14 @@ async function postMailApi(
 async function postMailApiJson(
   path: string,
   payload: Record<string, unknown>,
-  sessionTokenOverride?: string | null,
 ): Promise<Record<string, unknown>> {
-  const sessionToken = resolveAuthToken(sessionTokenOverride);
   const response = await withRequestActivity(path, async () => {
-    return fetch(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken), {
+    const token = getStoredSessionToken();
+    return fetch(withSessionToken(`${MAIL_API_URL}${path}`), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
     });
@@ -392,7 +277,7 @@ async function postMailApiJson(
   };
   if (!response.ok) {
     if (response.status === 401) {
-      handleSessionExpired(sessionToken);
+      handleSessionExpired();
       throw new Error("Session expired. Please log in again.");
     }
     throw new Error(data.error || "Request failed");
@@ -401,12 +286,12 @@ async function postMailApiJson(
 }
 
 async function getMailApiJson(path: string): Promise<Record<string, unknown>> {
-  const sessionToken = resolveAuthToken();
   const response = await withRequestActivity(path, async () => {
-    return fetch(withCacheBuster(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken)), {
+    const token = getStoredSessionToken();
+    return fetch(withCacheBuster(withSessionToken(`${MAIL_API_URL}${path}`)), {
       method: "GET",
       cache: "no-store",
-      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
   });
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown> & {
@@ -414,7 +299,7 @@ async function getMailApiJson(path: string): Promise<Record<string, unknown>> {
   };
   if (!response.ok) {
     if (response.status === 401) {
-      handleSessionExpired(sessionToken);
+      handleSessionExpired();
       throw new Error("Session expired. Please log in again.");
     }
     throw new Error(data.error || "Request failed");
@@ -425,15 +310,14 @@ async function getMailApiJson(path: string): Promise<Record<string, unknown>> {
 async function uploadMailApiFile(
   path: string,
   file: File,
-  sessionTokenOverride?: string | null,
 ): Promise<Record<string, unknown>> {
-  const sessionToken = resolveAuthToken(sessionTokenOverride);
   const formData = new FormData();
   formData.append("file", file);
   const response = await withRequestActivity(path, async () => {
-    return fetch(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken), {
+    const token = getStoredSessionToken();
+    return fetch(withSessionToken(`${MAIL_API_URL}${path}`), {
       method: "POST",
-      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: formData,
     });
   });
@@ -442,7 +326,7 @@ async function uploadMailApiFile(
   };
   if (!response.ok) {
     if (response.status === 401) {
-      handleSessionExpired(sessionToken);
+      handleSessionExpired();
       throw new Error("Session expired. Please log in again.");
     }
     throw new Error(data.error || "Upload failed");
@@ -704,27 +588,20 @@ function deserializeUsers(raw: string): User[] {
 
 function loadUsersStore(): User[] {
   if (typeof window === "undefined") {
-    return ENABLE_SEEDED_FALLBACK
-      ? INITIAL_MOCK_USERS.map((user) => ({ ...user }))
-      : [];
+    return INITIAL_MOCK_USERS.map((user) => ({ ...user }));
   }
   try {
     const raw = window.localStorage.getItem(USERS_STORE_KEY);
     if (!raw) {
-      if (ENABLE_SEEDED_FALLBACK) {
-        window.localStorage.setItem(
-          USERS_STORE_KEY,
-          serializeUsers(INITIAL_MOCK_USERS),
-        );
-        return INITIAL_MOCK_USERS.map((user) => ({ ...user }));
-      }
-      return [];
+      window.localStorage.setItem(
+        USERS_STORE_KEY,
+        serializeUsers(INITIAL_MOCK_USERS),
+      );
+      return INITIAL_MOCK_USERS.map((user) => ({ ...user }));
     }
     return deserializeUsers(raw);
   } catch {
-    return ENABLE_SEEDED_FALLBACK
-      ? INITIAL_MOCK_USERS.map((user) => ({ ...user }))
-      : [];
+    return INITIAL_MOCK_USERS.map((user) => ({ ...user }));
   }
 }
 
@@ -735,13 +612,16 @@ async function postOptionalApi(
 ): Promise<Record<string, unknown> | null> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), OPTIONAL_API_TIMEOUT_MS);
-  const token = resolveAuthToken(sessionTokenOverride);
+  const token = sessionTokenOverride ?? getStoredSessionToken();
   try {
-    const response = await fetch(withSessionToken(`${MAIL_API_URL}${path}`, token), {
+    const url = token
+      ? `${MAIL_API_URL}${path}?sessionToken=${encodeURIComponent(token)}`
+      : `${MAIL_API_URL}${path}`;
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(getAuthHeaders(token) ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
@@ -761,11 +641,14 @@ async function getOptionalApi(
 ): Promise<Record<string, unknown> | null> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), OPTIONAL_API_TIMEOUT_MS);
-  const token = resolveAuthToken(sessionTokenOverride);
+  const token = sessionTokenOverride ?? getStoredSessionToken();
   try {
-    const response = await fetch(withSessionToken(`${MAIL_API_URL}${path}`, token), {
+    const url = token
+      ? `${MAIL_API_URL}${path}?sessionToken=${encodeURIComponent(token)}`
+      : `${MAIL_API_URL}${path}`;
+    const response = await fetch(url, {
       method: "GET",
-      headers: getAuthHeaders(token),
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       signal: controller.signal,
     });
     if (!response.ok) return null;
@@ -782,13 +665,22 @@ async function postKeepaliveApi(
   payload: Record<string, unknown>,
   sessionTokenOverride?: string | null,
 ): Promise<void> {
-  const token = resolveAuthToken(sessionTokenOverride);
+  const token = sessionTokenOverride ?? getStoredSessionToken();
+  const url = token
+    ? `${MAIL_API_URL}${path}?sessionToken=${encodeURIComponent(token)}`
+    : `${MAIL_API_URL}${path}`;
   try {
-    await fetch(withSessionToken(`${MAIL_API_URL}${path}`, token), {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      const body = new Blob([JSON.stringify(payload)], {
+        type: "application/json",
+      });
+      const sent = navigator.sendBeacon(url, body);
+      if (sent) return;
+    }
+    await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(getAuthHeaders(token) ?? {}),
       },
       body: JSON.stringify(payload),
       keepalive: true,
@@ -874,7 +766,6 @@ const _recentUserOverrides = new Map<
 function persistUsersStore(notify = true) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(USERS_STORE_KEY, serializeUsers(_mockUsers));
-  persistStaffStatsCache(deriveLocalStaffStats());
   if (notify) {
     window.dispatchEvent(new CustomEvent(USERS_UPDATED_EVENT));
   }
@@ -936,49 +827,41 @@ function applyRecentUserOverrides(users: User[]): User[] {
   return users.map((user) => resolveRecentUserOverride(user));
 }
 
-function reconcileServerUser(user: User): User {
-  const existing = _mockUsers.find((item) => item.id === user.id);
-  const currentAuth = _liveAuthUser ?? getStoredAuthUser();
-  const currentToken = getStoredSessionToken();
-  const sessionToken =
-    existing?.sessionToken ??
-    (currentAuth?.id === user.id
-      ? currentToken ?? currentAuth.sessionToken ?? user.sessionToken
-      : user.sessionToken);
-  const lastSeen =
-    existing && existing.lastSeen > user.lastSeen ? existing.lastSeen : user.lastSeen;
-  const nextUser = {
-    ...user,
-    sessionToken,
-    lastSeen,
-    isOnlineNow: existing?.isOnlineNow ?? user.isOnlineNow,
-  };
-  return resolveRecentUserOverride(nextUser);
-}
-
-function replaceUsersCache(users: User[], notify = false): User[] {
-  _mockUsers = users.map((user) => reconcileServerUser(user));
-  persistUsersStore(notify);
-  return _mockUsers;
-}
-
-function mergeUsersCache(users: User[], notify = false): User[] {
-  const byId = new Map(_mockUsers.map((user) => [user.id, user] as const));
-  for (const user of users) {
-    byId.set(user.id, reconcileServerUser(user));
-  }
-  _mockUsers = Array.from(byId.values());
-  persistUsersStore(notify);
-  return _mockUsers;
-}
-
 async function refreshUsersCache(): Promise<User[]> {
   try {
     const payload = await getMailApiJson("/users");
     const rawUsers = Array.isArray(payload.users) ? (payload.users as WireUser[]) : [];
-    replaceUsersCache(rawUsers.map(deserializeUser), false);
+    const knownTokens = new Map(
+      _mockUsers
+        .filter((user) => user.sessionToken)
+        .map((user) => [user.id, user.sessionToken as string]),
+    );
+    const currentToken = getStoredSessionToken();
+    _mockUsers = rawUsers.map((rawUser) => {
+      const user = deserializeUser(rawUser);
+      user.sessionToken = knownTokens.get(user.id) ?? user.sessionToken;
+      return user;
+    });
+    _mockUsers = applyRecentUserOverrides(_mockUsers);
+    if (currentToken) {
+      const currentAuthRaw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+      if (currentAuthRaw) {
+        const currentAuth = deserializeUser(JSON.parse(currentAuthRaw) as WireUser);
+        const idx = _mockUsers.findIndex((user) => user.id === currentAuth.id);
+        if (idx >= 0) {
+          _mockUsers[idx] = {
+            ..._mockUsers[idx],
+            sessionToken: currentToken,
+          };
+        }
+      }
+    }
+    persistUsersStore(false);
   } catch {
-    // Keep the last real cached users on network failure.
+    _mockUsers = loadUsersStore().map((user) => ({
+      ...user,
+      isOnlineNow: false,
+    }));
   }
   return _mockUsers;
 }
@@ -988,46 +871,37 @@ async function fetchUserById(userId: string): Promise<User | null> {
     const payload = await getMailApiJson(`/users/${encodeURIComponent(userId)}`);
     const rawUser = payload.user as WireUser | undefined;
     if (!rawUser) return null;
-    const user = deserializeUser(rawUser);
-    mergeUsersCache([user], false);
-    return _mockUsers.find((item) => item.id === user.id) ?? user;
-  } catch {
-    return _mockUsers.find((user) => user.id === userId) ?? null;
+  const user = deserializeUser(rawUser);
+  user.sessionToken =
+    _mockUsers.find((item) => item.id === user.id)?.sessionToken ??
+    getStoredSessionToken() ??
+    undefined;
+  const resolvedUser = resolveRecentUserOverride(user);
+  const idx = _mockUsers.findIndex((item) => item.id === user.id);
+  if (idx >= 0) {
+    _mockUsers[idx] = resolvedUser;
+  } else {
+    _mockUsers.push(resolvedUser);
   }
+  persistUsersStore(false);
+  return resolvedUser;
+} catch {
+  return _mockUsers.find((user) => user.id === userId) ?? null;
 }
-
-async function probeUserSession(
-  userId: string,
-  sessionTokenOverride?: string | null,
-): Promise<User | null> {
-  try {
-    const payload = await getOptionalApi(
-      `/users/${encodeURIComponent(userId)}`,
-      sessionTokenOverride,
-    );
-    const rawUser = payload?.user as WireUser | undefined;
-    if (!rawUser) return null;
-    const user = deserializeUser(rawUser);
-    mergeUsersCache([user], false);
-    return _mockUsers.find((item) => item.id === user.id) ?? user;
-  } catch {
-    return null;
-  }
 }
 
 function upsertCachedUser(user: User) {
-  mergeUsersCache([user], true);
+  const idx = _mockUsers.findIndex((item) => item.id === user.id);
+  if (idx >= 0) {
+    _mockUsers[idx] = user;
+  } else {
+    _mockUsers.push(user);
+  }
+  persistUsersStore();
 }
 
 export function apiSyncCachedUser(user: User) {
   upsertCachedUser(user);
-}
-
-export async function apiProbeCurrentSession(
-  userId: string,
-  sessionTokenOverride?: string | null,
-): Promise<User | null> {
-  return probeUserSession(userId, sessionTokenOverride);
 }
 
 function contentId(value: unknown): number {
@@ -1536,7 +1410,6 @@ export async function apiLogin(
     }
     user.sessionToken = sessionToken;
     user.isOnlineNow = true;
-    apiSetCurrentAuthUser(user);
     const sharedLastSeen = await pingSharedPresence(user.id);
     if (sharedLastSeen) {
       user.lastSeen = sharedLastSeen;
@@ -1556,10 +1429,8 @@ export async function apiUpdateLastSeen(
   userId: string,
 ): Promise<ApiResult<User>> {
   await delay(120);
-  const liveUser =
-    _mockUsers.find((item) => item.id === userId && item.isActive) ??
-    (_liveAuthUser?.id === userId && _liveAuthUser.isActive ? _liveAuthUser : null);
-  const user = liveUser ? { ...liveUser } : null;
+  await refreshUsersCache();
+  const user = _mockUsers.find((item) => item.id === userId && item.isActive);
   if (!user || user.isArchived) return err("User not found");
   user.lastSeen = currentPresenceTimestampMs();
   user.isOnlineNow = true;
@@ -1567,7 +1438,7 @@ export async function apiUpdateLastSeen(
   if (sharedLastSeen) {
     user.lastSeen = sharedLastSeen;
   }
-  upsertCachedUser(user);
+  persistUsersStore(false);
   return ok({ ...user });
 }
 
@@ -1589,7 +1460,6 @@ export async function apiLogout(
   } catch {
     // Ignore logout API failures so the local session can still clear.
   }
-  apiSetCurrentAuthUser(null);
 }
 
 export async function apiRequestPasswordReset(
@@ -1691,7 +1561,10 @@ export async function apiGetArchivedStaff(): Promise<User[]> {
       .map(deserializeUser)
       .filter((user) => isPortalStaff(user))
       .sort((a, b) => a.fullname.localeCompare(b.fullname));
-    mergeUsersCache(users, true);
+    _mockUsers = users.concat(
+      _mockUsers.filter((user) => !users.some((item) => item.id === user.id)),
+    );
+    persistUsersStore();
     return users;
   } catch {
     return _mockUsers
@@ -1783,7 +1656,7 @@ export async function apiGetStaffStats(): Promise<StaffStats> {
   await delay(300);
   try {
     const payload = await getMailApiJson("/staff/stats");
-    const stats = {
+    return {
       total: Number(payload.total ?? 0),
       active: Number(payload.active ?? 0),
       archived: Number(payload.archived ?? 0),
@@ -1791,24 +1664,30 @@ export async function apiGetStaffStats(): Promise<StaffStats> {
       byBranch: (payload.byBranch as Record<string, number>) ?? {},
       byRole: (payload.byRole as Record<string, number>) ?? {},
     };
-    persistStaffStatsCache(stats);
-    return stats;
   } catch {
-    const cached = loadStaffStatsCache();
-    if (cached) return cached;
-    return deriveLocalStaffStats();
+    const active = _mockUsers.filter((u) => !u.isArchived && u.isActive);
+    const byDept: Record<string, number> = {};
+    const byBranch: Record<string, number> = {};
+    const byRole: Record<string, number> = {};
+    for (const u of active) {
+      byDept[u.department] = (byDept[u.department] ?? 0) + 1;
+      byBranch[u.branch] = (byBranch[u.branch] ?? 0) + 1;
+      byRole[u.role] = (byRole[u.role] ?? 0) + 1;
+    }
+    return {
+      total: _mockUsers.length,
+      active: active.length,
+      archived: _mockUsers.filter((u) => u.isArchived).length,
+      byDepartment: byDept,
+      byBranch: byBranch,
+      byRole: byRole,
+    };
   }
 }
 
 export async function apiGetDashboardOverview(): Promise<DashboardOverview> {
   await delay(350);
   await refreshUsersCache();
-  let staffStats: StaffStats;
-  try {
-    staffStats = await apiGetStaffStats();
-  } catch {
-    staffStats = getEffectiveStaffStatsSync();
-  }
   try {
     const payload = await getMailApiJson("/content/announcements");
     const sharedItems = Array.isArray(payload.announcements)
@@ -1818,8 +1697,44 @@ export async function apiGetDashboardOverview(): Promise<DashboardOverview> {
   } catch {
     // Keep local seeded content if shared announcements are unavailable.
   }
-  const branchDistribution = buildBranchDistribution(staffStats);
-  const departmentDistribution = buildDepartmentDistribution(staffStats);
+  const activeStaff = _mockUsers.filter(
+    (u) =>
+      u.isActive &&
+      !u.isArchived &&
+      !["MASTER ADMIN", "System Admin"].includes(u.fullname),
+  );
+  const branchOrder = [
+    "HEAD OFFICE",
+    "BAWJIASE",
+    "ADEISO",
+    "OFAAKOR",
+    "KASOA NEW MARKET",
+    "KASOA MAIN",
+  ];
+  const branchCounts = new Map<string, number>(
+    branchOrder.map((branch) => [branch, 0]),
+  );
+  const departmentCounts = new Map<string, number>();
+
+  for (const user of activeStaff) {
+    const branch = user.branch.trim().toUpperCase();
+    branchCounts.set(branch, (branchCounts.get(branch) ?? 0) + 1);
+    if (user.role !== "SuperAdmin") {
+      const department = user.department.trim().toUpperCase() || "OTHER";
+      departmentCounts.set(
+        department,
+        (departmentCounts.get(department) ?? 0) + 1,
+      );
+    }
+  }
+
+  const branchDistribution = branchOrder.map((name) => ({
+    name,
+    value: branchCounts.get(name) ?? 0,
+  }));
+  const departmentDistribution = [...departmentCounts.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value]) => ({ name, value }));
   const supportPending =
     _incidents.filter((i) => i.status !== "resolved").length +
     _amendments.filter((a) => a.status === "pending").length;
@@ -1837,7 +1752,7 @@ export async function apiGetDashboardOverview(): Promise<DashboardOverview> {
   );
 
   return {
-    totalStaff: staffStats.active,
+    totalStaff: activeStaff.length,
     activeBranches: branchDistribution.filter((item) => item.value > 0).length,
     openOperations: supportPending,
     resolutionRate: ticketFlow
@@ -1851,16 +1766,53 @@ export async function apiGetDashboardOverview(): Promise<DashboardOverview> {
     topDepartmentCount: topDepartment.value,
     branchDistribution,
     departmentDistribution:
-      departmentDistribution.length > 0 ? departmentDistribution : [{ name: "No Data", value: 0 }],
+      departmentDistribution.length > 0
+        ? departmentDistribution
+        : [{ name: "No Data", value: 0 }],
     supportPending,
     supportResolved,
   };
 }
 
 export function apiGetCachedDashboardOverview(): DashboardOverview {
-  const cachedStats = getEffectiveStaffStatsSync();
-  const branchDistribution = buildBranchDistribution(cachedStats);
-  const departmentDistribution = buildDepartmentDistribution(cachedStats);
+  const activeStaff = _mockUsers.filter(
+    (u) =>
+      u.isActive &&
+      !u.isArchived &&
+      !["MASTER ADMIN", "System Admin"].includes(u.fullname),
+  );
+  const branchOrder = [
+    "HEAD OFFICE",
+    "BAWJIASE",
+    "ADEISO",
+    "OFAAKOR",
+    "KASOA NEW MARKET",
+    "KASOA MAIN",
+  ];
+  const branchCounts = new Map<string, number>(
+    branchOrder.map((branch) => [branch, 0]),
+  );
+  const departmentCounts = new Map<string, number>();
+
+  for (const user of activeStaff) {
+    const branch = user.branch.trim().toUpperCase();
+    branchCounts.set(branch, (branchCounts.get(branch) ?? 0) + 1);
+    if (user.role !== "SuperAdmin") {
+      const department = user.department.trim().toUpperCase() || "OTHER";
+      departmentCounts.set(
+        department,
+        (departmentCounts.get(department) ?? 0) + 1,
+      );
+    }
+  }
+
+  const branchDistribution = branchOrder.map((name) => ({
+    name,
+    value: branchCounts.get(name) ?? 0,
+  }));
+  const departmentDistribution = [...departmentCounts.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value]) => ({ name, value }));
   const supportPending =
     _incidents.filter((i) => i.status !== "resolved").length +
     _amendments.filter((a) => a.status === "pending").length;
@@ -1878,7 +1830,7 @@ export function apiGetCachedDashboardOverview(): DashboardOverview {
   );
 
   return {
-    totalStaff: cachedStats.active,
+    totalStaff: activeStaff.length,
     activeBranches: branchDistribution.filter((item) => item.value > 0).length,
     openOperations: supportPending,
     resolutionRate: ticketFlow
@@ -1892,7 +1844,9 @@ export function apiGetCachedDashboardOverview(): DashboardOverview {
     topDepartmentCount: topDepartment.value,
     branchDistribution,
     departmentDistribution:
-      departmentDistribution.length > 0 ? departmentDistribution : [{ name: "No Data", value: 0 }],
+      departmentDistribution.length > 0
+        ? departmentDistribution
+        : [{ name: "No Data", value: 0 }],
     supportPending,
     supportResolved,
   };
@@ -1990,7 +1944,7 @@ export interface UpdateAnnouncementRequest
 
 const _announcements: AnnouncementWithPoll[] = loadContentCache(
   ANNOUNCEMENTS_STORE_KEY,
-  seededFallback(SEEDED_ANNOUNCEMENTS),
+  SEEDED_ANNOUNCEMENTS,
   deserializeAnnouncement,
 );
 let _announcementIdCounter = Math.max(0, ..._announcements.map((item) => item.id)) + 1;
@@ -2009,7 +1963,9 @@ export async function apiGetAnnouncements(
       : [];
     replaceSharedAnnouncements(sharedItems);
   } catch {
-    // Keep the last real cached data on network failure.
+    if (!ENABLE_SEEDED_FALLBACK) {
+      replaceSharedAnnouncements([]);
+    }
   }
   const authUser = getStoredAuthUser();
   const dismissedIds = getDismissedAnnouncementIds(userId);
@@ -2039,7 +1995,9 @@ export async function apiGetTrashedAnnouncements(): Promise<Announcement[]> {
       : [];
     replaceSharedAnnouncements(sharedItems);
   } catch {
-    // Keep the last real cached data on network failure.
+    if (!ENABLE_SEEDED_FALLBACK) {
+      replaceSharedAnnouncements([]);
+    }
   }
   return _announcements
     .filter((a) => a.isTrashed)
@@ -2493,7 +2451,7 @@ const SEEDED_FORMS: PortalForm[] = [
 
 let _forms: PortalForm[] = loadContentCache(
   FORMS_STORE_KEY,
-  seededFallback(SEEDED_FORMS),
+  SEEDED_FORMS,
   deserializeForm,
 );
 
@@ -2558,7 +2516,9 @@ export async function apiGetForms(user?: User | null): Promise<PortalForm[]> {
       : [];
     replaceSharedForms(sharedItems);
   } catch {
-    // Keep the last real cached data on network failure.
+    if (!ENABLE_SEEDED_FALLBACK) {
+      replaceSharedForms([]);
+    }
   }
   return _forms
     .filter((form) => canUserSeeForm(form, user))
@@ -2755,7 +2715,6 @@ export interface AdminTrainingOverview {
 }
 
 function getStoredAuthUser(): User | null {
-  if (_liveAuthUser) return _liveAuthUser;
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
@@ -2770,7 +2729,9 @@ function getStoredAuthUser(): User | null {
 }
 
 function getPortalActiveUsers() {
-  return getEffectiveActiveStaffSync();
+  return _mockUsers.filter(
+    (u) => isPortalStaff(u) && u.isActive && !u.isArchived,
+  );
 }
 
 function isTrainingManager(user: User | null | undefined) {
@@ -2795,15 +2756,14 @@ function isGoogleDocUrl(input: string) {
 function localAssetUrl(ref: string) {
   const filename = ref.replace(/^LOCAL:/, "").trim();
   return filename
-    ? `${MAIL_API_ROOT}/uploads/${filename}?_v=${encodeURIComponent(ref)}`
+    ? `${withSessionToken(`${MAIL_API_ROOT}/uploads/${filename}`)}&_v=${encodeURIComponent(ref)}`
     : "";
 }
 
 export async function apiUploadTrainingVideoFile(
   file: File,
-  sessionToken?: string | null,
 ): Promise<{ filename: string; url: string }> {
-  const payload = await uploadMailApiFile("/uploads/training-video", file, sessionToken);
+  const payload = await uploadMailApiFile("/uploads/training-video", file);
   return {
     filename: String(payload.filename ?? ""),
     url: String(payload.url ?? ""),
@@ -2812,13 +2772,8 @@ export async function apiUploadTrainingVideoFile(
 
 export async function apiUploadTrainingDocumentFile(
   file: File,
-  sessionToken?: string | null,
 ): Promise<{ filename: string; url: string }> {
-  const payload = await uploadMailApiFile(
-    "/uploads/training-document",
-    file,
-    sessionToken,
-  );
+  const payload = await uploadMailApiFile("/uploads/training-document", file);
   return {
     filename: String(payload.filename ?? ""),
     url: String(payload.url ?? ""),
@@ -3105,12 +3060,12 @@ const SEEDED_TRAINING_DOCUMENTS: TrainingDocument[] = [
 
 const _trainingVideos: TrainingVideo[] = loadContentCache(
   TRAINING_VIDEOS_STORE_KEY,
-  seededFallback(SEEDED_TRAINING_VIDEOS),
+  SEEDED_TRAINING_VIDEOS,
   deserializeTrainingVideo,
 );
 const _trainingDocuments: TrainingDocument[] = loadContentCache(
   TRAINING_DOCUMENTS_STORE_KEY,
-  seededFallback(SEEDED_TRAINING_DOCUMENTS),
+  SEEDED_TRAINING_DOCUMENTS,
   deserializeTrainingDocument,
 );
 
@@ -3167,7 +3122,9 @@ export async function apiGetTrainingVideos(): Promise<TrainingVideo[]> {
       : [];
     replaceSharedTrainingVideos(sharedItems);
   } catch {
-    // Keep the last real cached data on network failure.
+    if (!ENABLE_SEEDED_FALLBACK) {
+      replaceSharedTrainingVideos([]);
+    }
   }
   const user = currentTrainingUser();
   return _trainingVideos
@@ -3198,44 +3155,39 @@ export async function apiGetTrainingVideo(
 
 export async function apiUploadTrainingVideo(
   req: UploadVideoRequest,
-  sessionToken?: string | null,
 ): Promise<ApiResult<TrainingVideo>> {
   await delay(600);
   try {
-    const payload = await postMailApiJson(
-      "/content/training/videos",
-      {
-        title: req.title,
-        description: req.description,
-        videoUrl: req.videoUrl,
-        thumbnailUrl: null,
-        duration: 0,
-        category:
-          req.visibility === "Department"
-            ? (req.department ?? "General")
-            : "General",
-        visibleTo: [],
-        visibility: req.visibility,
-        department:
-          req.visibility === "Department" ? (req.department ?? null) : null,
-        branchScope: req.branchScope ?? ["ALL"],
-        departmentScope:
-          req.departmentScope ??
-          (req.visibility === "Department" && req.department
-            ? [req.department]
-            : ["ALL"]),
-        isMandatory: !!req.mandatory,
-        allowDownload: !!req.allowDownload,
-        storageType: req.storageType,
-        driveRef: req.storageType === "Drive" ? req.videoUrl : null,
-        localFilename:
-          req.storageType === "Local" ? req.videoUrl.replace(/^LOCAL:/, "") : null,
-        viewCount: 0,
-        isArchived: false,
-        sendExternalEmails: !!req.sendExternalEmails,
-      },
-      sessionToken,
-    );
+    const payload = await postMailApiJson("/content/training/videos", {
+      title: req.title,
+      description: req.description,
+      videoUrl: req.videoUrl,
+      thumbnailUrl: null,
+      duration: 0,
+      category:
+        req.visibility === "Department"
+          ? (req.department ?? "General")
+          : "General",
+      visibleTo: [],
+      visibility: req.visibility,
+      department:
+        req.visibility === "Department" ? (req.department ?? null) : null,
+      branchScope: req.branchScope ?? ["ALL"],
+      departmentScope:
+        req.departmentScope ??
+        (req.visibility === "Department" && req.department
+          ? [req.department]
+          : ["ALL"]),
+      isMandatory: !!req.mandatory,
+      allowDownload: !!req.allowDownload,
+      storageType: req.storageType,
+      driveRef: req.storageType === "Drive" ? req.videoUrl : null,
+      localFilename:
+        req.storageType === "Local" ? req.videoUrl.replace(/^LOCAL:/, "") : null,
+      viewCount: 0,
+      isArchived: false,
+      sendExternalEmails: !!req.sendExternalEmails,
+    });
     const rawVideo = payload.video as Record<string, unknown> | undefined;
     if (!rawVideo) return err("Video could not be uploaded");
     const video = deserializeTrainingVideo(rawVideo);
@@ -3352,7 +3304,9 @@ export async function apiGetTrainingDocuments(): Promise<TrainingDocument[]> {
       : [];
     replaceSharedTrainingDocuments(sharedItems);
   } catch {
-    // Keep the last real cached data on network failure.
+    if (!ENABLE_SEEDED_FALLBACK) {
+      replaceSharedTrainingDocuments([]);
+    }
   }
   const user = currentTrainingUser();
   return _trainingDocuments
@@ -3384,43 +3338,38 @@ export async function apiGetTrainingDocument(
 
 export async function apiUploadTrainingDocument(
   req: UploadDocumentRequest,
-  sessionToken?: string | null,
 ): Promise<ApiResult<TrainingDocument>> {
   await delay(600);
   try {
-    const payload = await postMailApiJson(
-      "/content/training/documents",
-      {
-        title: req.title,
-        description: req.description,
-        fileUrl: req.fileUrl,
-        fileType: req.fileType,
-        category:
-          req.visibility === "Department"
-            ? (req.department ?? "General")
-            : "General",
-        visibleTo: [],
-        visibility: req.visibility,
-        department:
-          req.visibility === "Department" ? (req.department ?? null) : null,
-        branchScope: req.branchScope ?? ["ALL"],
-        departmentScope:
-          req.departmentScope ??
-          (req.visibility === "Department" && req.department
-            ? [req.department]
-            : ["ALL"]),
-        isMandatory: !!req.mandatory,
-        allowDownload: !!req.allowDownload,
-        storageType: req.storageType,
-        driveRef: req.storageType === "Drive" ? req.fileUrl : null,
-        localFilename:
-          req.storageType === "Local" ? req.fileUrl.replace(/^LOCAL:/, "") : null,
-        downloadCount: 0,
-        isArchived: false,
-        sendExternalEmails: !!req.sendExternalEmails,
-      },
-      sessionToken,
-    );
+    const payload = await postMailApiJson("/content/training/documents", {
+      title: req.title,
+      description: req.description,
+      fileUrl: req.fileUrl,
+      fileType: req.fileType,
+      category:
+        req.visibility === "Department"
+          ? (req.department ?? "General")
+          : "General",
+      visibleTo: [],
+      visibility: req.visibility,
+      department:
+        req.visibility === "Department" ? (req.department ?? null) : null,
+      branchScope: req.branchScope ?? ["ALL"],
+      departmentScope:
+        req.departmentScope ??
+        (req.visibility === "Department" && req.department
+          ? [req.department]
+          : ["ALL"]),
+      isMandatory: !!req.mandatory,
+      allowDownload: !!req.allowDownload,
+      storageType: req.storageType,
+      driveRef: req.storageType === "Drive" ? req.fileUrl : null,
+      localFilename:
+        req.storageType === "Local" ? req.fileUrl.replace(/^LOCAL:/, "") : null,
+      downloadCount: 0,
+      isArchived: false,
+      sendExternalEmails: !!req.sendExternalEmails,
+    });
     const rawDocument = payload.document as Record<string, unknown> | undefined;
     if (!rawDocument) return err("Document could not be uploaded");
     const doc = deserializeTrainingDocument(rawDocument);
@@ -3572,7 +3521,7 @@ export async function apiGetAdminTrainingOverview(): Promise<AdminTrainingOvervi
     // Fall back to local state below.
   }
   await Promise.all([apiGetTrainingVideos(), apiGetTrainingDocuments()]);
-  const totalStaff = getEffectiveStaffStatsSync().active;
+  const totalStaff = getPortalActiveUsers().length;
   return {
     totalVideos: _trainingVideos.filter((v) => !v.isArchived).length,
     totalDocuments: _trainingDocuments.filter((d) => !d.isArchived).length,
@@ -4052,7 +4001,7 @@ const SEEDED_AUDIT_LOGS: AuditLog[] = [
 
 const _auditLogs: AuditLog[] = loadContentCache(
   AUDIT_LOGS_STORE_KEY,
-  seededFallback(SEEDED_AUDIT_LOGS),
+  SEEDED_AUDIT_LOGS,
   deserializeAuditLog,
 );
 
@@ -4160,14 +4109,14 @@ export async function apiDeleteAuditLogs(
 
 export async function apiDownloadProductionBackup(): Promise<ApiResult<string>> {
   try {
-    const token = resolveAuthToken();
+    const token = getStoredSessionToken();
     const response = await fetch(`${MAIL_API_URL}/backup/export`, {
       method: "GET",
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!response.ok) {
       if (response.status === 401) {
-        handleSessionExpired(token);
+        handleSessionExpired();
         return err("Session expired. Please log in again.");
       }
       const data = (await response.json().catch(() => ({}))) as {

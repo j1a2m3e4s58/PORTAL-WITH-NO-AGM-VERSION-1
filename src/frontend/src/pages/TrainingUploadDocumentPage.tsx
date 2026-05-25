@@ -148,32 +148,28 @@ export default function TrainingUploadDocumentPage() {
     }
     setSubmitting(true);
     try {
-      const sessionToken = user?.sessionToken ?? null;
       const fileUrl =
         storageType === "Drive"
           ? `DRIVE:${driveInput.trim()}`
-          : `LOCAL:${(await apiUploadTrainingDocumentFile(localFile as File, sessionToken)).filename}`;
+          : `LOCAL:${(await apiUploadTrainingDocumentFile(localFile as File)).filename}`;
       const fileType =
         storageType === "Local" && localFile ? getFileType(localFile) : "drive";
 
-      const result = await apiUploadTrainingDocument(
-        {
-          title: title.trim(),
-          description: description.trim(),
-          fileUrl,
-          fileType,
-          storageType,
-          visibility,
-          department: visibility === "Department" ? department : undefined,
-          branchScope: branchTarget === "ALL" ? ["ALL"] : [branchTarget],
-          departmentScope:
-            visibility === "Department" && department ? [department] : ["ALL"],
-          mandatory,
-          allowDownload,
-          sendExternalEmails,
-        },
-        sessionToken,
-      );
+      const result = await apiUploadTrainingDocument({
+        title: title.trim(),
+        description: description.trim(),
+        fileUrl,
+        fileType,
+        storageType,
+        visibility,
+        department: visibility === "Department" ? department : undefined,
+        branchScope: branchTarget === "ALL" ? ["ALL"] : [branchTarget],
+        departmentScope:
+          visibility === "Department" && department ? [department] : ["ALL"],
+        mandatory,
+        allowDownload,
+        sendExternalEmails,
+      });
       if ("err" in result) {
         throw new Error(result.err);
       }
