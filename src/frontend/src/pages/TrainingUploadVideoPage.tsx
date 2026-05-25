@@ -143,25 +143,29 @@ export default function TrainingUploadVideoPage() {
     }
     setSubmitting(true);
     try {
+      const sessionToken = user?.sessionToken ?? null;
       const videoUrl =
         storageType === "Drive"
           ? `DRIVE:${driveId}`
-          : `LOCAL:${(await apiUploadTrainingVideoFile(localFile as File)).filename}`;
+          : `LOCAL:${(await apiUploadTrainingVideoFile(localFile as File, sessionToken)).filename}`;
 
-      const result = await apiUploadTrainingVideo({
-        title: title.trim(),
-        description: description.trim(),
-        videoUrl,
-        storageType,
-        visibility,
-        department: visibility === "Department" ? department : undefined,
-        branchScope: branchTarget === "ALL" ? ["ALL"] : [branchTarget],
-        departmentScope:
-          visibility === "Department" && department ? [department] : ["ALL"],
-        mandatory,
-        allowDownload,
-        sendExternalEmails,
-      });
+      const result = await apiUploadTrainingVideo(
+        {
+          title: title.trim(),
+          description: description.trim(),
+          videoUrl,
+          storageType,
+          visibility,
+          department: visibility === "Department" ? department : undefined,
+          branchScope: branchTarget === "ALL" ? ["ALL"] : [branchTarget],
+          departmentScope:
+            visibility === "Department" && department ? [department] : ["ALL"],
+          mandatory,
+          allowDownload,
+          sendExternalEmails,
+        },
+        sessionToken,
+      );
       if ("err" in result) {
         throw new Error(result.err);
       }

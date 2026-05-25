@@ -343,8 +343,12 @@ function handleSessionExpired(sessionToken?: string | null) {
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
 }
 
-async function postMailApi(path: string, payload: Record<string, unknown>) {
-  const sessionToken = resolveAuthToken();
+async function postMailApi(
+  path: string,
+  payload: Record<string, unknown>,
+  sessionTokenOverride?: string | null,
+) {
+  const sessionToken = resolveAuthToken(sessionTokenOverride);
   const response = await withRequestActivity(path, async () => {
     return fetch(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken), {
       method: "POST",
@@ -370,8 +374,9 @@ async function postMailApi(path: string, payload: Record<string, unknown>) {
 async function postMailApiJson(
   path: string,
   payload: Record<string, unknown>,
+  sessionTokenOverride?: string | null,
 ): Promise<Record<string, unknown>> {
-  const sessionToken = resolveAuthToken();
+  const sessionToken = resolveAuthToken(sessionTokenOverride);
   const response = await withRequestActivity(path, async () => {
     return fetch(withSessionToken(`${MAIL_API_URL}${path}`, sessionToken), {
       method: "POST",
@@ -420,8 +425,9 @@ async function getMailApiJson(path: string): Promise<Record<string, unknown>> {
 async function uploadMailApiFile(
   path: string,
   file: File,
+  sessionTokenOverride?: string | null,
 ): Promise<Record<string, unknown>> {
-  const sessionToken = resolveAuthToken();
+  const sessionToken = resolveAuthToken(sessionTokenOverride);
   const formData = new FormData();
   formData.append("file", file);
   const response = await withRequestActivity(path, async () => {
@@ -2795,8 +2801,9 @@ function localAssetUrl(ref: string) {
 
 export async function apiUploadTrainingVideoFile(
   file: File,
+  sessionToken?: string | null,
 ): Promise<{ filename: string; url: string }> {
-  const payload = await uploadMailApiFile("/uploads/training-video", file);
+  const payload = await uploadMailApiFile("/uploads/training-video", file, sessionToken);
   return {
     filename: String(payload.filename ?? ""),
     url: String(payload.url ?? ""),
@@ -2805,8 +2812,13 @@ export async function apiUploadTrainingVideoFile(
 
 export async function apiUploadTrainingDocumentFile(
   file: File,
+  sessionToken?: string | null,
 ): Promise<{ filename: string; url: string }> {
-  const payload = await uploadMailApiFile("/uploads/training-document", file);
+  const payload = await uploadMailApiFile(
+    "/uploads/training-document",
+    file,
+    sessionToken,
+  );
   return {
     filename: String(payload.filename ?? ""),
     url: String(payload.url ?? ""),
@@ -3186,39 +3198,44 @@ export async function apiGetTrainingVideo(
 
 export async function apiUploadTrainingVideo(
   req: UploadVideoRequest,
+  sessionToken?: string | null,
 ): Promise<ApiResult<TrainingVideo>> {
   await delay(600);
   try {
-    const payload = await postMailApiJson("/content/training/videos", {
-      title: req.title,
-      description: req.description,
-      videoUrl: req.videoUrl,
-      thumbnailUrl: null,
-      duration: 0,
-      category:
-        req.visibility === "Department"
-          ? (req.department ?? "General")
-          : "General",
-      visibleTo: [],
-      visibility: req.visibility,
-      department:
-        req.visibility === "Department" ? (req.department ?? null) : null,
-      branchScope: req.branchScope ?? ["ALL"],
-      departmentScope:
-        req.departmentScope ??
-        (req.visibility === "Department" && req.department
-          ? [req.department]
-          : ["ALL"]),
-      isMandatory: !!req.mandatory,
-      allowDownload: !!req.allowDownload,
-      storageType: req.storageType,
-      driveRef: req.storageType === "Drive" ? req.videoUrl : null,
-      localFilename:
-        req.storageType === "Local" ? req.videoUrl.replace(/^LOCAL:/, "") : null,
-      viewCount: 0,
-      isArchived: false,
-      sendExternalEmails: !!req.sendExternalEmails,
-    });
+    const payload = await postMailApiJson(
+      "/content/training/videos",
+      {
+        title: req.title,
+        description: req.description,
+        videoUrl: req.videoUrl,
+        thumbnailUrl: null,
+        duration: 0,
+        category:
+          req.visibility === "Department"
+            ? (req.department ?? "General")
+            : "General",
+        visibleTo: [],
+        visibility: req.visibility,
+        department:
+          req.visibility === "Department" ? (req.department ?? null) : null,
+        branchScope: req.branchScope ?? ["ALL"],
+        departmentScope:
+          req.departmentScope ??
+          (req.visibility === "Department" && req.department
+            ? [req.department]
+            : ["ALL"]),
+        isMandatory: !!req.mandatory,
+        allowDownload: !!req.allowDownload,
+        storageType: req.storageType,
+        driveRef: req.storageType === "Drive" ? req.videoUrl : null,
+        localFilename:
+          req.storageType === "Local" ? req.videoUrl.replace(/^LOCAL:/, "") : null,
+        viewCount: 0,
+        isArchived: false,
+        sendExternalEmails: !!req.sendExternalEmails,
+      },
+      sessionToken,
+    );
     const rawVideo = payload.video as Record<string, unknown> | undefined;
     if (!rawVideo) return err("Video could not be uploaded");
     const video = deserializeTrainingVideo(rawVideo);
@@ -3367,38 +3384,43 @@ export async function apiGetTrainingDocument(
 
 export async function apiUploadTrainingDocument(
   req: UploadDocumentRequest,
+  sessionToken?: string | null,
 ): Promise<ApiResult<TrainingDocument>> {
   await delay(600);
   try {
-    const payload = await postMailApiJson("/content/training/documents", {
-      title: req.title,
-      description: req.description,
-      fileUrl: req.fileUrl,
-      fileType: req.fileType,
-      category:
-        req.visibility === "Department"
-          ? (req.department ?? "General")
-          : "General",
-      visibleTo: [],
-      visibility: req.visibility,
-      department:
-        req.visibility === "Department" ? (req.department ?? null) : null,
-      branchScope: req.branchScope ?? ["ALL"],
-      departmentScope:
-        req.departmentScope ??
-        (req.visibility === "Department" && req.department
-          ? [req.department]
-          : ["ALL"]),
-      isMandatory: !!req.mandatory,
-      allowDownload: !!req.allowDownload,
-      storageType: req.storageType,
-      driveRef: req.storageType === "Drive" ? req.fileUrl : null,
-      localFilename:
-        req.storageType === "Local" ? req.fileUrl.replace(/^LOCAL:/, "") : null,
-      downloadCount: 0,
-      isArchived: false,
-      sendExternalEmails: !!req.sendExternalEmails,
-    });
+    const payload = await postMailApiJson(
+      "/content/training/documents",
+      {
+        title: req.title,
+        description: req.description,
+        fileUrl: req.fileUrl,
+        fileType: req.fileType,
+        category:
+          req.visibility === "Department"
+            ? (req.department ?? "General")
+            : "General",
+        visibleTo: [],
+        visibility: req.visibility,
+        department:
+          req.visibility === "Department" ? (req.department ?? null) : null,
+        branchScope: req.branchScope ?? ["ALL"],
+        departmentScope:
+          req.departmentScope ??
+          (req.visibility === "Department" && req.department
+            ? [req.department]
+            : ["ALL"]),
+        isMandatory: !!req.mandatory,
+        allowDownload: !!req.allowDownload,
+        storageType: req.storageType,
+        driveRef: req.storageType === "Drive" ? req.fileUrl : null,
+        localFilename:
+          req.storageType === "Local" ? req.fileUrl.replace(/^LOCAL:/, "") : null,
+        downloadCount: 0,
+        isArchived: false,
+        sendExternalEmails: !!req.sendExternalEmails,
+      },
+      sessionToken,
+    );
     const rawDocument = payload.document as Record<string, unknown> | undefined;
     if (!rawDocument) return err("Document could not be uploaded");
     const doc = deserializeTrainingDocument(rawDocument);
