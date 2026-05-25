@@ -10,6 +10,7 @@ import { isOk } from "@/types";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -28,7 +29,9 @@ export default function LoginPage() {
     try {
       const result = await apiLogin(email, hashPassword(password));
       if (isOk(result)) {
-        login(result.ok, rememberMe);
+        flushSync(() => {
+          login(result.ok, rememberMe);
+        });
         toast.success(`Welcome back, ${result.ok.fullname.split(" ")[0]}!`);
         navigate({ to: "/" });
       } else {
