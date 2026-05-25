@@ -340,7 +340,9 @@ function handleSessionExpired(sessionToken?: string | null) {
     return;
   }
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+  window.dispatchEvent(
+    new CustomEvent(SESSION_EXPIRED_EVENT, { detail: { force: true } }),
+  );
 }
 
 async function postMailApi(path: string, payload: Record<string, unknown>) {

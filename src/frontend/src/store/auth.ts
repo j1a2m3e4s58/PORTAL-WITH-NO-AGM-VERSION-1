@@ -179,9 +179,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [themeMode]);
 
   useEffect(() => {
-    const handleSessionExpired = () => {
+    const handleSessionExpired = (event: Event) => {
       const currentUser = userRef.current;
       if (!currentUser) return;
+      const shouldForceLogout =
+        event instanceof CustomEvent && event.detail?.force === true;
+      if (shouldForceLogout) {
+        authSessionRef.current += 1;
+        userRef.current = null;
+        apiSetCurrentAuthUser(null);
+        setUser(null);
+        clearStoredUser();
+        return;
+      }
       const lastActivity = Number(localStorage.getItem(AUTH_ACTIVITY_KEY) ?? "0");
       const recentlyActive =
         document.visibilityState === "visible" &&

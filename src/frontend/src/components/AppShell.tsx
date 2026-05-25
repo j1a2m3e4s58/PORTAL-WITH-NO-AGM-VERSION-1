@@ -148,8 +148,8 @@ function canSeeNavItem(user: PortalUser | null, item: NavItem) {
   return true;
 }
 
-function logoutAndRedirect(logout: () => void) {
-  logout();
+async function logoutAndRedirect(logout: () => Promise<void>) {
+  await logout();
   window.location.replace(withBase("login"));
 }
 
