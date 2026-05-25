@@ -70,10 +70,7 @@ function loadStoredUser(): User | null {
     }
     const lastActivity = localStorage.getItem(AUTH_ACTIVITY_KEY);
     if (lastActivity && Date.now() - Number(lastActivity) > INACTIVITY_LIMIT_MS) {
-      localStorage.removeItem(AUTH_KEY);
-      localStorage.removeItem(AUTH_EXPIRY_KEY);
       localStorage.removeItem(AUTH_ACTIVITY_KEY);
-      return null;
     }
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return null;
@@ -197,11 +194,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
-      authSessionRef.current += 1;
-      userRef.current = null;
-      apiSetCurrentAuthUser(null);
-      setUser(null);
-      clearStoredUser();
+      void apiSetPresenceOffline(currentUser.id, currentUser.sessionToken ?? null);
     };
 
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
@@ -270,10 +263,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       timeoutId = window.setTimeout(() => {
         if (cancelled || authSessionRef.current !== sessionId) return;
         void setPresenceOffline();
-        userRef.current = null;
-        apiSetCurrentAuthUser(null);
-        setUser(null);
-        clearStoredUser();
       }, INACTIVITY_LIMIT_MS);
     };
 
@@ -302,10 +291,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const lastActivity = Number(localStorage.getItem(AUTH_ACTIVITY_KEY) ?? "0");
       if (!lastActivity || Date.now() - lastActivity > INACTIVITY_LIMIT_MS) {
         void setPresenceOffline();
-        userRef.current = null;
-        apiSetCurrentAuthUser(null);
-        setUser(null);
-        clearStoredUser();
         return;
       }
       if (document.visibilityState !== "visible") {
