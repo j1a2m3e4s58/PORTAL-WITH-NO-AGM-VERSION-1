@@ -1,5 +1,5 @@
 // AGM Pro Service Worker — Cache-first for app shell, network-first for API
-const CACHE_NAME = "agm-pro-v3";
+const CACHE_NAME = "agm-pro-v5";
 const OFFLINE_URL = "/";
 
 const APP_SHELL = [
