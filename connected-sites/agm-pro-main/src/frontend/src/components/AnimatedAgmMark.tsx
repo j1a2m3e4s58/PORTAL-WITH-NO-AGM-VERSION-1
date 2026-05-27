@@ -5,9 +5,9 @@ function getLogoSrc() {
     typeof window !== "undefined" &&
     window.location.pathname.startsWith("/connected-sites/agm-pro")
   ) {
-    return "/connected-sites/agm-pro/assets/images/bcb-logo.png";
+    return "/connected-sites/agm-pro/assets/images/bcb-logo.png?v=no-stars1";
   }
-  return "/assets/images/bcb-logo.png";
+  return "/assets/images/bcb-logo.png?v=no-stars1";
 }
 
 export function AnimatedAgmMark({
