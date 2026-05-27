@@ -326,9 +326,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {mobileQuickItems.length > 0 && (
           <nav className="fixed inset-x-0 bottom-0 z-40 lg:hidden">
             <div
-              className="sea-shell sea-outline grid border-t border-border/70 bg-card/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_32px_rgba(4,8,20,0.16)] backdrop-blur-xl dark:bg-[rgba(12,14,22,0.92)] dark:shadow-[0_-12px_32px_rgba(4,8,20,0.28)]"
+              className="sea-shell sea-outline grid grid-cols-4 border-t border-border/70 bg-card/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_32px_rgba(4,8,20,0.16)] backdrop-blur-xl dark:bg-[rgba(12,14,22,0.92)] dark:shadow-[0_-12px_32px_rgba(4,8,20,0.28)]"
               style={{
-                gridTemplateColumns: `repeat(${mobileQuickItems.length}, minmax(0, 1fr))`,
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
               }}
             >
               {mobileQuickItems.map((item) => {
@@ -361,7 +362,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </span>
                     <span
                       className={cn(
-                        "w-full font-display text-[9px] font-semibold uppercase tracking-[0.18em] leading-none",
+                        "agm-mobile-nav-label w-full overflow-hidden font-display text-[9px] font-semibold uppercase tracking-[0.18em] leading-none",
                         isActive
                           ? "text-primary-foreground"
                           : "text-foreground/68 dark:text-foreground/76",
