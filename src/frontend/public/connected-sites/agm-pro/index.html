@@ -13,13 +13,19 @@
     <link rel="icon" type="image/x-icon" href="./favicon.ico" />
     <link rel="apple-touch-icon" href="./assets/generated/apple-touch-icon-v3.png" />
     <link rel="manifest" href="./manifest.json?v=3" />
-    <script type="module" crossorigin src="./assets/index-fpr4bnQo.js?v=navfix3"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-rNxodgdf.css?v=navfix3">
+    <script type="module" crossorigin src="./assets/index-fpr4bnQo.js?v=agm-routefix1"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-rNxodgdf.css?v=agm-routefix1">
   </head>
   <body>
     <div id="root"></div>
     <script>
-      window.history.replaceState(null, "", "/");
+      if (window.location.pathname === "/connected-sites/agm-pro/index.html") {
+        window.history.replaceState(
+          null,
+          "",
+          "/connected-sites/agm-pro/" + window.location.search + window.location.hash
+        );
+      }
     </script>
     <script>
       if ('serviceWorker' in navigator) {

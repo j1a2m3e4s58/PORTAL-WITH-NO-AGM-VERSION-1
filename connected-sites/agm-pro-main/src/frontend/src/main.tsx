@@ -17,6 +17,13 @@ declare global {
 const queryClient = new QueryClient();
 
 if (typeof window !== "undefined") {
+  if (window.location.pathname === "/connected-sites/agm-pro/index.html") {
+    window.history.replaceState(
+      null,
+      "",
+      `/connected-sites/agm-pro/${window.location.search}${window.location.hash}`,
+    );
+  }
   const pendingRedirect = sessionStorage.getItem("agm-spa-redirect");
   if (pendingRedirect) {
     sessionStorage.removeItem("agm-spa-redirect");

@@ -174,7 +174,15 @@ const routeTree = rootRoute.addChildren([
   reportsRoute,
 ]);
 
-const router = createRouter({ routeTree });
+const AGM_PORTAL_BASEPATH = "/connected-sites/agm-pro";
+const router = createRouter({
+  routeTree,
+  basepath:
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith(AGM_PORTAL_BASEPATH)
+      ? AGM_PORTAL_BASEPATH
+      : "/",
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
