@@ -1,4 +1,11 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1024" height="1024" fill="#ffffff"/>
-  <image href="../images/bcb-logo.png" x="0" y="0" width="1024" height="1024" preserveAspectRatio="xMidYMid meet"/>
+  <defs>
+    <clipPath id="round-icon">
+      <circle cx="512" cy="512" r="510"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#round-icon)">
+    <circle cx="512" cy="512" r="510" fill="#ffffff"/>
+    <image href="../images/bcb-logo.png" x="72" y="72" width="880" height="880" preserveAspectRatio="xMidYMid meet"/>
+  </g>
 </svg>
